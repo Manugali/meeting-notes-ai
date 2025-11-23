@@ -10,21 +10,20 @@ export function optimizeSupabaseConnection(connectionString: string): string {
       return connectionString
     }
 
-    // Parse the connection string
-    const url = new URL(connectionString.replace(/^postgresql:\/\//, 'http://'))
-    
     // URL-encode the password if it contains special characters
     // This is important for passwords with &, +, @, etc.
-    if (url.password && !url.password.includes('%')) {
+    // Use regex to extract and encode password without using URL constructor
+    const passwordMatch = connectionString.match(/postgresql:\/\/[^:]+:([^@]+)@/)
+    if (passwordMatch && passwordMatch[1]) {
+      const password = passwordMatch[1]
       // Check if password has special characters that need encoding
       const specialChars = /[&+@#%?=]/g
-      if (specialChars.test(url.password)) {
-        // Reconstruct URL with encoded password
-        const encodedPassword = encodeURIComponent(url.password)
-        const newUrl = new URL(connectionString.replace(/^postgresql:\/\//, 'http://'))
-        newUrl.password = encodedPassword
+      if (specialChars.test(password) && !password.includes('%')) {
+        // URL-encode the password
+        const encodedPassword = encodeURIComponent(password)
+        // Replace the password in the connection string
         connectionString = connectionString.replace(
-          `:${url.password}@`,
+          `:${password}@`,
           `:${encodedPassword}@`
         )
       }

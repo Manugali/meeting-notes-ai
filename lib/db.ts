@@ -16,8 +16,13 @@ function createPrismaClient() {
     // Log connection attempt in production for debugging (without exposing password)
     const isProduction = process.env.NODE_ENV === 'production'
     if (isProduction) {
-      const urlObj = new URL(process.env.DATABASE_URL.replace(/^postgresql:\/\//, 'http://'))
-      console.log(`[DB] Attempting connection to: ${urlObj.hostname}:${urlObj.port || 5432}`)
+      // Extract hostname and port using regex to avoid URL constructor issues
+      const hostMatch = process.env.DATABASE_URL.match(/@([^:]+):(\d+)\//)
+      if (hostMatch) {
+        console.log(`[DB] Attempting connection to: ${hostMatch[1]}:${hostMatch[2]}`)
+      } else {
+        console.log(`[DB] Attempting connection to Supabase database`)
+      }
     }
     
     // Optimize connection string for Supabase
