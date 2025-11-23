@@ -3,9 +3,15 @@ import { prisma } from "./db"
 import { retryDbOperation } from "./db-utils"
 import { retryOpenAICall } from "./openai-retry"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy initialization - only create client when needed (at runtime, not build time)
+function getOpenAIClient(): OpenAI {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not set")
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
 
 export async function processMeeting(meetingId: string) {
   try {
@@ -127,7 +133,7 @@ async function transcribeAudio(audioUrl: string): Promise<string> {
 
     // Transcribe using OpenAI Whisper with retry logic
     const transcription = await retryOpenAICall(
-      () => openai.audio.transcriptions.create({
+      () => getOpenAIClient().audio.transcriptions.create({
         file: audioFile,
         model: "whisper-1",
         language: "en", // You can make this dynamic based on user preference
@@ -211,7 +217,7 @@ Please respond in the following JSON format:
 Only return valid JSON, no additional text.`
 
     const completion = await retryOpenAICall(
-      () => openai.chat.completions.create({
+      () => getOpenAIClient().chat.completions.create({
         model: "gpt-4o-mini", // Using mini for cost efficiency, can upgrade to gpt-4 if needed
         messages: [
           {
