@@ -11,21 +11,24 @@ export function optimizeSupabaseConnection(connectionString: string): string {
     }
 
     // URL-encode the password if it contains special characters
-    // This is important for passwords with &, +, @, etc.
-    // Use regex to extract and encode password without using URL constructor
-    const passwordMatch = connectionString.match(/postgresql:\/\/[^:]+:([^@]+)@/)
-    if (passwordMatch && passwordMatch[1]) {
-      const password = passwordMatch[1]
-      // Check if password has special characters that need encoding
-      const specialChars = /[&+@#%?=]/g
-      if (specialChars.test(password) && !password.includes('%')) {
-        // URL-encode the password
-        const encodedPassword = encodeURIComponent(password)
-        // Replace the password in the connection string
-        connectionString = connectionString.replace(
-          `:${password}@`,
-          `:${encodedPassword}@`
-        )
+    // This is critical for passwords with &, +, @, etc.
+    // Extract: postgresql://user:password@host
+    const urlPattern = /^postgresql:\/\/([^:]+):([^@]+)@(.+)$/
+    const match = connectionString.match(urlPattern)
+    
+    if (match) {
+      const [, username, password, rest] = match
+      
+      // Always encode password to handle special characters safely
+      // Even if it looks encoded, re-encode to be safe
+      const encodedPassword = encodeURIComponent(decodeURIComponent(password))
+      
+      // Reconstruct connection string with encoded password
+      connectionString = `postgresql://${username}:${encodedPassword}@${rest}`
+      
+      // Log in production for debugging (without exposing password)
+      if (process.env.NODE_ENV === 'production') {
+        console.log(`[DB] Password encoding applied (length: ${password.length} -> ${encodedPassword.length})`)
       }
     }
 

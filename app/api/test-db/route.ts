@@ -7,6 +7,11 @@ import { prisma } from "@/lib/db"
  */
 export async function GET() {
   try {
+    // Log connection string info (without password) for debugging
+    const dbUrl = process.env.DATABASE_URL || ''
+    const urlInfo = dbUrl.replace(/:[^:@]+@/, ':****@') // Mask password
+    console.log(`[DB TEST] Connection string: ${urlInfo.substring(0, 100)}...`)
+    
     // Simple query to test connection
     const result = await prisma.$queryRaw`SELECT 1 as test`
     
@@ -18,6 +23,12 @@ export async function GET() {
   } catch (error: any) {
     console.error("Database connection test failed:", error)
     
+    // Provide more helpful error message
+    let hint = "Unknown database error"
+    if (error.code === 'P1001' || error.code === 'P2010') {
+      hint = "Cannot reach database server. The password in DATABASE_URL may need URL encoding. Password '5y5CfV&ww+5M46y' should be encoded as '5y5CfV%26ww%2B5M46y' in Vercel environment variables."
+    }
+    
     return NextResponse.json({ 
       success: false, 
       error: error.message,
@@ -26,9 +37,7 @@ export async function GET() {
         message: error.message,
         code: error.code,
         meta: error.meta,
-        hint: error.code === 'P1001' 
-          ? "Cannot reach database server. Check Supabase IP restrictions and project status."
-          : "Unknown database error"
+        hint
       }
     }, { status: 500 })
   }
