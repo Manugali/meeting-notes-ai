@@ -13,6 +13,13 @@ function createPrismaClient() {
   }
 
   try {
+    // Log connection attempt in production for debugging (without exposing password)
+    const isProduction = process.env.NODE_ENV === 'production'
+    if (isProduction) {
+      const urlObj = new URL(process.env.DATABASE_URL.replace(/^postgresql:\/\//, 'http://'))
+      console.log(`[DB] Attempting connection to: ${urlObj.hostname}:${urlObj.port || 5432}`)
+    }
+    
     // Optimize connection string for Supabase
     const connectionString = optimizeSupabaseConnection(process.env.DATABASE_URL)
     
@@ -24,7 +31,7 @@ function createPrismaClient() {
     } : undefined
 
     // Production needs longer timeouts due to cold starts and network latency
-    const isProduction = process.env.NODE_ENV === 'production'
+    // Note: isProduction already defined above
     const connectionTimeout = isProduction ? 10000 : 2000 // 10s in prod, 2s in dev
     const queryTimeout = isProduction ? 30000 : 8000 // 30s in prod, 8s in dev
     
@@ -68,8 +75,21 @@ function createPrismaClient() {
       adapter,
       log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to create Prisma client:', error)
+    
+    // Provide helpful error message for production
+    if (process.env.NODE_ENV === 'production') {
+      if (error.message?.includes('DATABASE_URL') || !process.env.DATABASE_URL) {
+        console.error('[DB ERROR] DATABASE_URL environment variable is not set in Vercel')
+      } else if (error.message?.includes("Can't reach database server") || error.code === 'P1001') {
+        console.error('[DB ERROR] Cannot reach Supabase database. Check:')
+        console.error('  1. Supabase IP restrictions (Settings → Database → Connection Pooling)')
+        console.error('  2. DATABASE_URL is correct in Vercel environment variables')
+        console.error('  3. Supabase project is not paused')
+      }
+    }
+    
     throw error
   }
 }
