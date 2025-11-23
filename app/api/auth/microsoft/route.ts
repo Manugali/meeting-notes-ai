@@ -9,9 +9,10 @@ import { auth } from "@/lib/auth"
  * Handles the OAuth flow and stores tokens
  */
 export async function GET(req: Request) {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+  
   try {
     const session = await auth()
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
     
     if (!session?.user) {
       return NextResponse.redirect(`${baseUrl}/login?error=Unauthorized`)
