@@ -20,9 +20,10 @@ export default function LoginPage() {
     try {
       const result = await signIn("credentials", { 
         email,
-        redirect: true,
+        redirect: false,
         callbackUrl: "/dashboard" 
-      })
+      }) as { error?: string } | undefined
+      
       if (result?.error) {
         console.error("Sign in error:", result.error)
         const errorMessage = result.error === "CredentialsSignin" 
@@ -33,6 +34,9 @@ export default function LoginPage() {
           "Sign In Failed",
           errorMessage
         )
+      } else if (result && !result.error) {
+        // Success - redirect manually
+        window.location.href = "/dashboard"
       }
     } catch (error: any) {
       console.error("Sign in error:", error)

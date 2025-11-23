@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     const session = event.data.object as any
     
     if (session.mode === "subscription") {
-      const subscription = await stripe!.subscriptions.retrieve(session.subscription)
+      const subscription = await stripe!.subscriptions.retrieve(session.subscription) as any
       
       await prisma.subscription.upsert({
         where: { userId: session.metadata.userId },
@@ -44,14 +44,18 @@ export async function POST(req: Request) {
           stripePriceId: subscription.items.data[0]?.price.id,
           stripeSubscriptionId: subscription.id,
           status: subscription.status,
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          currentPeriodEnd: subscription.current_period_end 
+            ? new Date(subscription.current_period_end * 1000)
+            : null,
         },
         update: {
           stripeCustomerId: session.customer as string,
           stripePriceId: subscription.items.data[0]?.price.id,
           stripeSubscriptionId: subscription.id,
           status: subscription.status,
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          currentPeriodEnd: subscription.current_period_end 
+            ? new Date(subscription.current_period_end * 1000)
+            : null,
         },
       })
     }
@@ -67,7 +71,9 @@ export async function POST(req: Request) {
       },
       data: {
         status: subscription.status,
-        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        currentPeriodEnd: subscription.current_period_end 
+          ? new Date(subscription.current_period_end * 1000)
+          : null,
       },
     })
   }
