@@ -23,17 +23,37 @@ export function optimizeSupabaseConnection(connectionString: string): string {
       // Always encode password to handle special characters safely
       const encodedPassword = encodeURIComponent(decodeURIComponent(password))
       
-      // Prisma adapter requires direct connection (port 5432), not pooler
-      // Keep the original port - don't switch to pooler
-      const finalPort = port
+      // Vercel runs on IPv4, but Supabase direct connection (5432) may be IPv6-only
+      // Use connection pooler (port 6543) for IPv4 compatibility in production
+      const isProduction = process.env.NODE_ENV === 'production'
+      let finalPort = port
+      let finalHost = host
+      
+      // Switch to pooler in production for IPv4 compatibility
+      if (isProduction && port === '5432') {
+        // Use pooler hostname and port
+        // Pooler hostname format: aws-0-[region].pooler.supabase.com
+        // Or: db.[project-ref].supabase.co:6543
+        // Try to convert direct connection to pooler
+        if (host.includes('db.') && host.includes('.supabase.co')) {
+          // Extract project ref from hostname: db.lbhnxzijbttrdvcdmfdr.supabase.co
+          const projectRef = host.match(/db\.([^.]+)\.supabase\.co/)?.[1]
+          if (projectRef) {
+            // Use pooler hostname (same host but different port works, or use pooler subdomain)
+            // Actually, Supabase pooler uses the same hostname but port 6543
+            finalPort = '6543'
+            console.log(`[DB] Switching to pooler (port 6543) for IPv4 compatibility`)
+          }
+        }
+      }
       
       // Reconstruct connection string with encoded password
-      connectionString = `postgresql://${username}:${encodedPassword}@${host}:${finalPort}/${database}`
+      connectionString = `postgresql://${username}:${encodedPassword}@${finalHost}:${finalPort}/${database}`
       
       // Log in production for debugging
-      if (process.env.NODE_ENV === 'production') {
-        console.log(`[DB] Using direct connection on port ${finalPort}`)
-        console.log(`[DB] Host: ${host}`)
+      if (isProduction) {
+        console.log(`[DB] Using ${finalPort === '6543' ? 'pooler' : 'direct'} connection on port ${finalPort}`)
+        console.log(`[DB] Host: ${finalHost}`)
         console.log(`[DB] Password encoding applied`)
       }
     }
@@ -53,7 +73,12 @@ export function optimizeSupabaseConnection(connectionString: string): string {
     const connectTimeout = process.env.NODE_ENV === 'production' ? '15' : '3'
     params.set('connect_timeout', connectTimeout)
     params.set('application_name', 'meeting-notes-ai')
-    // Don't add pgbouncer - we're using direct connection for Prisma adapter
+    
+    // For pooler (port 6543), add pgbouncer parameter
+    if (optimized.includes(':6543')) {
+      params.set('pgbouncer', 'true')
+      console.log('[DB] Added pgbouncer=true for pooler connection')
+    }
     
     // Append params
     const separator = optimized.includes('?') ? '&' : '?'
