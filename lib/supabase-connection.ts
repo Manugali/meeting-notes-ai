@@ -23,29 +23,21 @@ export function optimizeSupabaseConnection(connectionString: string): string {
       // Always encode password to handle special characters safely
       const encodedPassword = encodeURIComponent(decodeURIComponent(password))
       
-      // Vercel runs on IPv4, but Supabase direct connection (5432) may be IPv6-only
-      // Use connection pooler (port 6543) for IPv4 compatibility in production
-      const isProduction = process.env.NODE_ENV === 'production'
-      let finalPort = port
-      let finalHost = host
+      // Check if this is already a pooler connection
+      // Pooler connections have: pooler.supabase.com hostname OR username with project ref (postgres.PROJECT_REF)
+      const isPoolerConnection = host.includes('pooler.supabase.com') || username.includes('.')
       
-      // Switch to pooler in production for IPv4 compatibility
-      if (isProduction && port === '5432') {
-        // Use pooler hostname and port
-        // Pooler hostname format: aws-0-[region].pooler.supabase.com
-        // Or: db.[project-ref].supabase.co:6543
-        // Try to convert direct connection to pooler
-        if (host.includes('db.') && host.includes('.supabase.co')) {
-          // Extract project ref from hostname: db.lbhnxzijbttrdvcdmfdr.supabase.co
-          const projectRef = host.match(/db\.([^.]+)\.supabase\.co/)?.[1]
-          if (projectRef) {
-            // Use pooler hostname (same host but different port works, or use pooler subdomain)
-            // Actually, Supabase pooler uses the same hostname but port 6543
-            finalPort = '6543'
-            console.log(`[DB] Switching to pooler (port 6543) for IPv4 compatibility`)
-          }
-        }
+      // If it's a direct connection in production, we should use pooler for IPv4 compatibility
+      // But if user already provided pooler connection string, use it as-is
+      const isProduction = process.env.NODE_ENV === 'production'
+      
+      if (isProduction && !isPoolerConnection && port === '5432') {
+        console.log(`[DB] Warning: Direct connection may not be IPv4 compatible. Consider using Session Pooler connection string.`)
       }
+      
+      // Use the connection as provided - don't modify host/port if it's already a pooler connection
+      const finalPort = port
+      const finalHost = host
       
       // Reconstruct connection string with encoded password
       connectionString = `postgresql://${username}:${encodedPassword}@${finalHost}:${finalPort}/${database}`
@@ -74,10 +66,16 @@ export function optimizeSupabaseConnection(connectionString: string): string {
     params.set('connect_timeout', connectTimeout)
     params.set('application_name', 'meeting-notes-ai')
     
-    // For pooler (port 6543), add pgbouncer parameter
-    if (optimized.includes(':6543')) {
+    // For pooler connections, add pgbouncer parameter
+    // Pooler connections have pooler.supabase.com hostname OR username with project ref
+    const isPoolerConnection = optimized.includes('pooler.supabase.com') || 
+                               optimized.match(/postgresql:\/\/postgres\.[^:]+:/)
+    
+    if (isPoolerConnection) {
       params.set('pgbouncer', 'true')
-      console.log('[DB] Added pgbouncer=true for pooler connection')
+      if (process.env.NODE_ENV === 'production') {
+        console.log('[DB] Detected pooler connection - added pgbouncer=true')
+      }
     }
     
     // Append params
