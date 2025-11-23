@@ -61,6 +61,11 @@ export async function GET(req: Request) {
     // TypeScript: account is guaranteed to exist after the check above
     const account = tokenResponse.account
 
+    // MSAL may not expose refreshToken directly, but we can get it from the token cache
+    // For now, we'll store null and handle refresh through MSAL's token cache
+    // The refresh token is managed internally by MSAL
+    const refreshToken = (tokenResponse as any).refreshToken || null
+
     // Store or update account
     await retryDbOperation(() =>
       prisma.account.upsert({
@@ -76,7 +81,7 @@ export async function GET(req: Request) {
           provider: "microsoft",
           providerAccountId: account.homeAccountId,
           access_token: tokenResponse.accessToken,
-          refresh_token: tokenResponse.refreshToken || undefined,
+          refresh_token: refreshToken || undefined,
           expires_at: tokenResponse.expiresOn
             ? Math.floor(tokenResponse.expiresOn.getTime() / 1000)
             : null,
@@ -85,7 +90,7 @@ export async function GET(req: Request) {
         },
         update: {
           access_token: tokenResponse.accessToken,
-          refresh_token: tokenResponse.refreshToken || undefined,
+          refresh_token: refreshToken || undefined,
           expires_at: tokenResponse.expiresOn
             ? Math.floor(tokenResponse.expiresOn.getTime() / 1000)
             : null,
