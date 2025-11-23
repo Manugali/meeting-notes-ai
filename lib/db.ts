@@ -23,19 +23,24 @@ function createPrismaClient() {
       rejectUnauthorized: false, // Allow self-signed certs in chain (Supabase certs are valid)
     } : undefined
 
+    // Production needs longer timeouts due to cold starts and network latency
+    const isProduction = process.env.NODE_ENV === 'production'
+    const connectionTimeout = isProduction ? 10000 : 2000 // 10s in prod, 2s in dev
+    const queryTimeout = isProduction ? 30000 : 8000 // 30s in prod, 8s in dev
+    
     const pool = new Pool({ 
       connectionString,
-      max: 5, // Smaller pool for faster connection establishment
+      max: isProduction ? 10 : 5, // Larger pool in production
       min: 0, // Don't keep connections idle (Supabase handles this)
-      idleTimeoutMillis: 20000, // 20 seconds
-      connectionTimeoutMillis: 2000, // 2 seconds - fail very fast
-      // Keep connections alive
-      keepAlive: false, // Let Supabase handle connection lifecycle
-      // Query timeouts - shorter for faster failures
-      statement_timeout: 8000, // 8 seconds per query
-      query_timeout: 8000,
+      idleTimeoutMillis: 30000, // 30 seconds
+      connectionTimeoutMillis: connectionTimeout,
+      // Keep connections alive in production
+      keepAlive: isProduction, // Keep alive in production for better performance
+      // Query timeouts - longer in production
+      statement_timeout: queryTimeout,
+      query_timeout: queryTimeout,
       // Connection pool optimization
-      allowExitOnIdle: true, // Allow pool to close when idle
+      allowExitOnIdle: !isProduction, // Keep connections in production
       // SSL configuration - must be set for Supabase
       ssl: sslConfig,
     })

@@ -21,7 +21,9 @@ export function optimizeSupabaseConnection(connectionString: string): string {
     
     // Add optimized parameters
     const params = new URLSearchParams()
-    params.set('connect_timeout', '3') // 3 second connection timeout
+    // Longer timeout in production (Vercel serverless needs more time)
+    const connectTimeout = process.env.NODE_ENV === 'production' ? '10' : '3'
+    params.set('connect_timeout', connectTimeout)
     params.set('application_name', 'meeting-notes-ai')
     // Don't set sslmode here - let the Pool SSL config handle it
     

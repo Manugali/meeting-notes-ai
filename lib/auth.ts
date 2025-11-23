@@ -24,14 +24,18 @@ export const authOptions = {
               const email = credentials?.email as string | undefined
               if (!email) return null
               
-              // Use retry for auth operations (1 retry with short delay)
+              // Use retry for auth operations - more retries in production
+              const isProduction = process.env.NODE_ENV === 'production'
+              const maxRetries = isProduction ? 3 : 1
+              const retryDelay = isProduction ? 500 : 200
+              
               let user = await retryDbOperation(
                 () =>
                   prisma.user.findUnique({
                     where: { email },
                   }),
-                1, // 1 retry for auth
-                200, // 200ms delay
+                maxRetries,
+                retryDelay,
                 true // Fast mode enabled
               )
               
@@ -44,8 +48,8 @@ export const authOptions = {
                         name: email.split("@")[0],
                       },
                     }),
-                  1, // 1 retry for auth
-                  200, // 200ms delay
+                  maxRetries,
+                  retryDelay,
                   true // Fast mode enabled
                 )
               }
@@ -62,8 +66,11 @@ export const authOptions = {
               const isConnectionError = 
                 error.message?.includes("timeout") ||
                 error.message?.includes("Connection") ||
-                error.code === "P1008" ||
-                error.code === "ETIMEDOUT"
+                error.message?.includes("Can't reach database server") ||
+                error.code === "P1001" || // Can't reach database server
+                error.code === "P1008" || // Connection timeout
+                error.code === "ETIMEDOUT" ||
+                error.code === "ECONNREFUSED"
               
               if (isConnectionError) {
                 // Return a more specific error for connection issues

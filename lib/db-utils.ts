@@ -23,6 +23,8 @@ export async function retryDbOperation<T>(
         error.message?.includes("Connection terminated unexpectedly") ||
         error.message?.includes("timeout") ||
         error.message?.includes("timeout exceeded") ||
+        error.message?.includes("Can't reach database server") ||
+        error.code === "P1001" || // Prisma can't reach database server
         error.code === "P1008" || // Prisma connection timeout
         error.code === "ETIMEDOUT" ||
         error.code === "ECONNREFUSED"
