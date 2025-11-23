@@ -1,0 +1,110 @@
+import { NextResponse } from "next/server"
+import { ConfidentialClientApplication } from "@azure/msal-node"
+import { prisma } from "@/lib/db"
+import { retryDbOperation } from "@/lib/db-utils"
+import { auth } from "@/lib/auth"
+
+/**
+ * Microsoft OAuth callback
+ * Handles the OAuth flow and stores tokens
+ */
+export async function GET(req: Request) {
+  try {
+    const session = await auth()
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    
+    if (!session?.user) {
+      return NextResponse.redirect(`${baseUrl}/login?error=Unauthorized`)
+    }
+
+    // Get user ID from session (could be in id or sub)
+    const userId = (session.user as any).id || (session.user as any).sub
+    if (!userId) {
+      return NextResponse.redirect(`${baseUrl}/dashboard?error=User ID not found in session`)
+    }
+
+    const { searchParams } = new URL(req.url)
+    const code = searchParams.get("code")
+    const error = searchParams.get("error")
+
+    if (error) {
+      return NextResponse.redirect(`${baseUrl}/dashboard?error=${encodeURIComponent(error)}`)
+    }
+
+    if (!code) {
+      return NextResponse.redirect(`${baseUrl}/dashboard?error=No authorization code`)
+    }
+
+    // Exchange code for tokens
+    const msalClient = new ConfidentialClientApplication({
+      auth: {
+        clientId: process.env.AZURE_CLIENT_ID!,
+        clientSecret: process.env.AZURE_CLIENT_SECRET!,
+        authority: `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}`,
+      },
+    })
+
+    const tokenResponse = await msalClient.acquireTokenByCode({
+      code,
+      redirectUri: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/microsoft`,
+      scopes: [
+        "https://graph.microsoft.com/OnlineMeetings.Read",
+        "https://graph.microsoft.com/User.Read",
+        "offline_access", // Standard OAuth scope, no prefix needed
+      ],
+    })
+
+    if (!tokenResponse?.account) {
+      return NextResponse.redirect(`${baseUrl}/dashboard?error=Failed to get account`)
+    }
+
+    // Store or update account
+    await retryDbOperation(() =>
+      prisma.account.upsert({
+        where: {
+          provider_providerAccountId: {
+            provider: "microsoft",
+            providerAccountId: tokenResponse.account.homeAccountId,
+          },
+        },
+        create: {
+          userId: userId,
+          type: "oauth",
+          provider: "microsoft",
+          providerAccountId: tokenResponse.account.homeAccountId,
+          access_token: tokenResponse.accessToken,
+          refresh_token: tokenResponse.refreshToken || undefined,
+          expires_at: tokenResponse.expiresOn
+            ? Math.floor(tokenResponse.expiresOn.getTime() / 1000)
+            : null,
+          token_type: "Bearer",
+          scope: tokenResponse.scopes?.join(" "),
+        },
+        update: {
+          access_token: tokenResponse.accessToken,
+          refresh_token: tokenResponse.refreshToken || undefined,
+          expires_at: tokenResponse.expiresOn
+            ? Math.floor(tokenResponse.expiresOn.getTime() / 1000)
+            : null,
+          token_type: "Bearer",
+          scope: tokenResponse.scopes?.join(" "),
+        },
+      })
+    )
+
+    // Subscribe to webhooks (non-blocking - will handle separately if needed)
+    try {
+      const { subscribeToTeamsRecordings } = await import("@/lib/teams")
+      await subscribeToTeamsRecordings(session.user.id)
+    } catch (webhookError) {
+      console.warn("Webhook subscription failed (will retry later):", webhookError)
+      // Don't fail the OAuth flow if webhook subscription fails
+    }
+
+    return NextResponse.redirect(`${baseUrl}/dashboard?teams=connected`)
+  } catch (error: any) {
+    console.error("Microsoft OAuth error:", error)
+    return NextResponse.redirect(`${baseUrl}/dashboard?error=${encodeURIComponent(error.message || "OAuth failed")}`)
+  }
+}
+
