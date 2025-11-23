@@ -58,20 +58,23 @@ export async function GET(req: Request) {
       return NextResponse.redirect(`${baseUrl}/dashboard?error=Failed to get account`)
     }
 
+    // TypeScript: account is guaranteed to exist after the check above
+    const account = tokenResponse.account
+
     // Store or update account
     await retryDbOperation(() =>
       prisma.account.upsert({
         where: {
           provider_providerAccountId: {
             provider: "microsoft",
-            providerAccountId: tokenResponse.account.homeAccountId,
+            providerAccountId: account.homeAccountId,
           },
         },
         create: {
           userId: userId,
           type: "oauth",
           provider: "microsoft",
-          providerAccountId: tokenResponse.account.homeAccountId,
+          providerAccountId: account.homeAccountId,
           access_token: tokenResponse.accessToken,
           refresh_token: tokenResponse.refreshToken || undefined,
           expires_at: tokenResponse.expiresOn
