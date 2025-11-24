@@ -2,9 +2,11 @@ import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
 
 /**
- * Generate upload URL using Vercel Blob REST API
+ * Generate upload token for client-side direct upload
  * For files > 4.5MB, we'll use direct upload to Vercel Blob
  * This bypasses Vercel's serverless function body limit
+ * 
+ * Returns a token that the client can use with @vercel/blob/client
  */
 export async function POST(req: Request) {
   const session = await auth()
@@ -45,33 +47,20 @@ export async function POST(req: Request) {
 
     const blobPath = `meetings/${session.user.id}/${Date.now()}-${filename}`
     
-    // Use Vercel Blob REST API to create an upload URL
-    const response = await fetch(`https://blob.vercel-storage.com/${blobPath}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`,
-        'x-content-type': contentType || 'application/octet-stream',
-        'x-add-random-suffix': 'false',
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to create upload URL: ${response.statusText}`)
-    }
-
-    const data = await response.json()
-    
-    // The response should contain the upload URL
+    // Return the path and token - client will use @vercel/blob/client to upload
+    // The client SDK will handle the upload URL generation
     return NextResponse.json({ 
-      uploadUrl: data.url || `https://blob.vercel-storage.com/${blobPath}`,
+      path: blobPath,
+      token: process.env.BLOB_READ_WRITE_TOKEN, // Pass token to client for upload
       filename,
+      contentType: contentType || 'application/octet-stream',
     })
   } catch (error: any) {
-    console.error("Error generating upload URL:", error)
+    console.error("Error generating upload info:", error)
     return NextResponse.json(
       { 
-        error: "Failed to generate upload URL",
-        message: error?.message || "Failed to generate upload URL. Please try again."
+        error: "Failed to generate upload info",
+        message: error?.message || "Failed to generate upload info. Please try again."
       },
       { status: 500 }
     )
