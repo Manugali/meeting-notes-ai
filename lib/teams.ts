@@ -124,8 +124,9 @@ async function refreshAccessToken(userId: string, refreshToken: string): Promise
 
 /**
  * Subscribe to Teams call recording webhooks
+ * Note: Webhooks only work for work/organizational accounts, not personal Microsoft accounts (MSA)
  */
-export async function subscribeToTeamsRecordings(userId: string): Promise<string | null> {
+export async function subscribeToTeamsRecordings(userId: string): Promise<{ subscriptionId: string | null; error: string | null }> {
   try {
     const client = await getGraphClient(userId)
     if (!client) {
@@ -162,10 +163,26 @@ export async function subscribeToTeamsRecordings(userId: string): Promise<string
       )
     }
 
-    return subscription.id
-  } catch (error) {
+    return { subscriptionId: subscription.id, error: null }
+  } catch (error: any) {
     console.error("Error subscribing to Teams recordings:", error)
-    return null
+    
+    // Check if it's an MSA (personal account) limitation
+    const isMSAError = error.message?.includes("MSA") || 
+                      error.message?.includes("not supported for MSA") ||
+                      error.code === "InvalidRequest" && error.message?.includes("MSA")
+    
+    if (isMSAError) {
+      return {
+        subscriptionId: null,
+        error: "Webhooks are not supported for personal Microsoft accounts. Automatic processing requires a work or school account. You can still use manual sync or upload recordings manually."
+      }
+    }
+    
+    return {
+      subscriptionId: null,
+      error: error.message || "Failed to create webhook subscription"
+    }
   }
 }
 
@@ -203,8 +220,11 @@ export async function renewWebhookIfNeeded(userId: string): Promise<boolean> {
 
     if (needsRenewal) {
       console.log(`[Teams] Webhook expiring soon or expired for user ${userId}, renewing...`)
-      const subscriptionId = await subscribeToTeamsRecordings(userId)
-      return subscriptionId !== null
+      const result = await subscribeToTeamsRecordings(userId)
+      if (result.error) {
+        console.warn(`[Teams] Webhook renewal failed: ${result.error}`)
+      }
+      return result.subscriptionId !== null
     }
 
     return true // Webhook is still active

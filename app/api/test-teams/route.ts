@@ -74,13 +74,17 @@ export async function GET() {
     // Check webhook renewal (or create if missing)
     let webhookRenewed = false
     let webhookCreated = false
+    let webhookError = null
     
     if (account && tokenValid) {
       // If webhook doesn't exist, create it
       if (!account.webhookSubscriptionId || !account.webhookExpiresAt) {
         console.log(`[Teams] Webhook missing for user ${userId}, creating...`)
-        const subscriptionId = await subscribeToTeamsRecordings(userId)
-        webhookCreated = subscriptionId !== null
+        const result = await subscribeToTeamsRecordings(userId)
+        webhookCreated = result.subscriptionId !== null
+        if (result.error) {
+          webhookError = result.error
+        }
       } else {
         // Otherwise, just renew if needed
         webhookRenewed = await renewWebhookIfNeeded(userId)
