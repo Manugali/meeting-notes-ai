@@ -65,37 +65,6 @@ export default function UploadPage() {
     }
   }
 
-  // Helper function for direct client-side upload to Vercel Blob
-  async function uploadFileToVercelBlob(file: File, uploadUrl: string, onProgress: (progress: number) => void): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.open('PUT', uploadUrl)
-      xhr.setRequestHeader('Content-Type', file.type)
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const percentComplete = (event.loaded / event.total) * 100
-          onProgress(percentComplete)
-        }
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          // The URL is the uploadUrl itself for direct uploads
-          resolve(uploadUrl.split('?')[0]) // Remove query params from the final URL
-        } else {
-          reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.statusText}`))
-        }
-      }
-
-      xhr.onerror = () => {
-        reject(new Error('Network error during upload.'))
-      }
-
-      xhr.send(file)
-    })
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!file) return
