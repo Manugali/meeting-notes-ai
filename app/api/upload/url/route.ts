@@ -1,11 +1,10 @@
 import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
-import { generateBlobUploadUrl } from "@vercel/blob"
 
 /**
- * Generate signed upload URL for direct client-to-Vercel Blob upload
- * This bypasses Vercel's 4.5MB serverless function body limit
- * Use this for files > 4.5MB
+ * Generate upload URL using Vercel Blob REST API
+ * For files > 4.5MB, we'll use direct upload to Vercel Blob
+ * This bypasses Vercel's serverless function body limit
  */
 export async function POST(req: Request) {
   const session = await auth()
@@ -37,21 +36,34 @@ export async function POST(req: Request) {
       )
     }
 
-    // Generate signed upload URL for direct client-side upload
-    const uploadUrl = await generateBlobUploadUrl(
-      `meetings/${session.user.id}/${Date.now()}-${filename}`,
-      {
-        access: "public",
-        contentType: contentType || "application/octet-stream",
-        addRandomSuffix: false,
-      },
-      {
-        token: process.env.BLOB_READ_WRITE_TOKEN,
-      }
-    )
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return NextResponse.json(
+        { error: "Blob storage not configured" },
+        { status: 500 }
+      )
+    }
 
+    const blobPath = `meetings/${session.user.id}/${Date.now()}-${filename}`
+    
+    // Use Vercel Blob REST API to create an upload URL
+    const response = await fetch(`https://blob.vercel-storage.com/${blobPath}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`,
+        'x-content-type': contentType || 'application/octet-stream',
+        'x-add-random-suffix': 'false',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to create upload URL: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    
+    // The response should contain the upload URL
     return NextResponse.json({ 
-      uploadUrl,
+      uploadUrl: data.url || `https://blob.vercel-storage.com/${blobPath}`,
       filename,
     })
   } catch (error: any) {
