@@ -4,9 +4,15 @@ import { NextResponse } from "next/server"
 
 /**
  * API route to manually sync Teams meetings
- * Fetches recent call records and processes recordings
+ * DISABLED: Teams integration is currently disabled
  */
 export async function POST() {
+  return NextResponse.json(
+    { error: "Teams integration is currently disabled" },
+    { status: 503 }
+  )
+  
+  /* DISABLED - Teams integration
   try {
     const session = await auth()
     if (!session?.user) {
@@ -52,5 +58,6 @@ export async function POST() {
       { status: statusCode }
     )
   }
+  */
 }
 

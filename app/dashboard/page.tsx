@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { MeetingCard } from "@/components/meeting-card"
-import { TeamsConnectionCard } from "@/components/teams-connection-card"
 import { format } from "date-fns"
 
 export default async function DashboardPage() {
@@ -122,9 +121,6 @@ export default async function DashboardPage() {
             </div>
           </Card>
         )}
-
-        {/* Microsoft Teams Integration */}
-        <TeamsConnectionCard userId={session.user.id} />
 
         {/* Upload Section */}
         <Card className="p-6 mb-8">

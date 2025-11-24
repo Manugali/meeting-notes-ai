@@ -6,9 +6,15 @@ import { renewWebhookIfNeeded } from "@/lib/teams"
 
 /**
  * Check if user has Microsoft Teams connected
- * Automatically renews webhook subscription if expired or expiring soon
+ * DISABLED: Teams integration is currently disabled
  */
 export async function GET() {
+  return NextResponse.json(
+    { error: "Teams integration is currently disabled", connected: false },
+    { status: 503 }
+  )
+  
+  /* DISABLED - Teams integration
   try {
     const session = await auth()
     if (!session?.user) {
@@ -49,5 +55,6 @@ export async function GET() {
     console.error("Error checking Teams status:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+  */
 }
 

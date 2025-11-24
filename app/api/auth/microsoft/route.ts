@@ -114,19 +114,8 @@ export async function GET(req: Request) {
       false // Not fast mode - use exponential backoff
     )
 
-    // Subscribe to webhooks (non-blocking - will handle separately if needed)
-    try {
-      const { subscribeToTeamsRecordings } = await import("@/lib/teams")
-      const result = await subscribeToTeamsRecordings(session.user.id)
-      if (result.error) {
-        console.warn("Webhook subscription failed:", result.error)
-        // Don't fail the OAuth flow if webhook subscription fails
-        // This is expected for personal Microsoft accounts (MSA)
-      }
-    } catch (webhookError) {
-      console.warn("Webhook subscription failed (will retry later):", webhookError)
-      // Don't fail the OAuth flow if webhook subscription fails
-    }
+    // Teams webhook subscription disabled - Teams integration is currently disabled
+    // Webhook subscription code removed
 
     return NextResponse.redirect(`${baseUrl}/dashboard?teams=connected`)
   } catch (error: any) {

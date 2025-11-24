@@ -3,8 +3,15 @@ import { auth } from "@/lib/auth"
 
 /**
  * Initiate Microsoft Teams OAuth flow
+ * DISABLED: Teams integration is currently disabled
  */
 export async function GET(req: Request) {
+  return NextResponse.json(
+    { error: "Teams integration is currently disabled" },
+    { status: 503 }
+  )
+  
+  /* DISABLED - Teams integration
   try {
     const session = await auth()
     if (!session?.user) {
@@ -60,5 +67,6 @@ export async function GET(req: Request) {
     console.error("Connect Teams error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+  */
 }
 

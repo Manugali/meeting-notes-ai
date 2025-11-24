@@ -7,9 +7,15 @@ import "isomorphic-fetch"
 
 /**
  * Microsoft Teams webhook endpoint
- * Receives notifications when call recordings are available
+ * DISABLED: Teams integration is currently disabled
  */
 export async function POST(req: Request) {
+  return NextResponse.json(
+    { error: "Teams integration is currently disabled" },
+    { status: 503 }
+  )
+  
+  /* DISABLED - Teams integration
   try {
     const body = await req.json()
 
@@ -60,6 +66,7 @@ export async function POST(req: Request) {
     console.error("Teams webhook error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+  */
 }
 
 /**
