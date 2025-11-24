@@ -1,9 +1,11 @@
 import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
+import { generateBlobUploadUrl } from "@vercel/blob"
 
 /**
- * Generate upload information for direct client-side upload
- * For files > 4.5MB, we'll use a workaround since Vercel has body size limits
+ * Generate signed upload URL for direct client-to-Vercel Blob upload
+ * This bypasses Vercel's 4.5MB serverless function body limit
+ * Use this for files > 4.5MB
  */
 export async function POST(req: Request) {
   const session = await auth()
@@ -35,22 +37,29 @@ export async function POST(req: Request) {
       )
     }
 
-    // For now, return the path - we'll handle upload differently
-    // The client will need to use a different method for large files
-    const blobPath = `meetings/${session.user.id}/${Date.now()}-${filename}`
+    // Generate signed upload URL for direct client-side upload
+    const uploadUrl = await generateBlobUploadUrl(
+      `meetings/${session.user.id}/${Date.now()}-${filename}`,
+      {
+        access: "public",
+        contentType: contentType || "application/octet-stream",
+        addRandomSuffix: false,
+      },
+      {
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      }
+    )
 
     return NextResponse.json({ 
-      path: blobPath,
+      uploadUrl,
       filename,
-      // Note: Direct upload URL generation requires Vercel Blob client-side SDK
-      // For now, we recommend compressing files to under 4.5MB
     })
   } catch (error: any) {
-    console.error("Error generating upload info:", error)
+    console.error("Error generating upload URL:", error)
     return NextResponse.json(
       { 
-        error: "Failed to generate upload info",
-        message: error?.message || "Failed to generate upload info. Please try again."
+        error: "Failed to generate upload URL",
+        message: error?.message || "Failed to generate upload URL. Please try again."
       },
       { status: 500 }
     )

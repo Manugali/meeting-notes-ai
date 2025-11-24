@@ -10,6 +10,37 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/toaster"
 import Link from "next/link"
 
+// Helper function for direct client-side upload to Vercel Blob
+async function uploadFileToVercelBlob(file: File, uploadUrl: string, onProgress: (progress: number) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', uploadUrl)
+    xhr.setRequestHeader('Content-Type', file.type)
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = (event.loaded / event.total) * 100
+        onProgress(percentComplete)
+      }
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        // The URL is the uploadUrl itself for direct uploads
+        resolve(uploadUrl.split('?')[0]) // Remove query params from the final URL
+      } else {
+        reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.statusText}`))
+      }
+    }
+
+    xhr.onerror = () => {
+      reject(new Error('Network error during upload.'))
+    }
+
+    xhr.send(file)
+  })
+}
+
 export default function UploadPage() {
   const { data: session } = useSession()
   const router = useRouter()
@@ -34,6 +65,37 @@ export default function UploadPage() {
     }
   }
 
+  // Helper function for direct client-side upload to Vercel Blob
+  async function uploadFileToVercelBlob(file: File, uploadUrl: string, onProgress: (progress: number) => void): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', uploadUrl)
+      xhr.setRequestHeader('Content-Type', file.type)
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = (event.loaded / event.total) * 100
+          onProgress(percentComplete)
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          // The URL is the uploadUrl itself for direct uploads
+          resolve(uploadUrl.split('?')[0]) // Remove query params from the final URL
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.statusText}`))
+        }
+      }
+
+      xhr.onerror = () => {
+        reject(new Error('Network error during upload.'))
+      }
+
+      xhr.send(file)
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!file) return
@@ -50,36 +112,57 @@ export default function UploadPage() {
         throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds the 25MB limit for AI processing. Please compress your file.`)
       }
 
-      // Warn about Vercel limit but try anyway (might work with streaming)
+      let blobUrl: string
+
+      // Use direct upload for files > 4.5MB to bypass Vercel's serverless function limit
       if (file.size > vercelLimit) {
-        console.warn(`File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds Vercel's 4.5MB body limit. Attempting upload...`)
-      }
-
-      // Step 1: Upload file (Vercel Blob's put() handles streaming internally)
-      const formData = new FormData()
-      formData.append("file", file)
-
-      const uploadRes = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!uploadRes.ok) {
-        const errorData = await uploadRes.json().catch(() => ({ error: "Upload failed", message: "Upload failed" }))
+        setUploadProgress(5) // Show initial progress
         
-        // Check if it's a 413 error (Payload Too Large)
-        if (uploadRes.status === 413) {
-          throw new Error(
-            `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds Vercel's 4.5MB upload limit. ` +
-            `Please compress your file to under 4.5MB. You can use online tools like HandBrake or FFmpeg to compress video files.`
-          )
+        // Step 1: Get signed upload URL
+        const getUrlRes = await fetch("/api/upload/url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            contentType: file.type,
+            size: file.size,
+          }),
+        })
+
+        if (!getUrlRes.ok) {
+          const errorData = await getUrlRes.json().catch(() => ({ error: "Failed to get upload URL", message: "Failed to get upload URL." }))
+          throw new Error(errorData.message || errorData.error || "Failed to get upload URL")
         }
-        
-        throw new Error(errorData.message || errorData.error || "Upload failed")
-      }
 
-      const { url: blobUrl } = await uploadRes.json()
-      setUploadProgress(50)
+        const { uploadUrl } = await getUrlRes.json()
+        setUploadProgress(10) // URL obtained
+
+        // Step 2: Upload file directly to Vercel Blob using the signed URL
+        blobUrl = await uploadFileToVercelBlob(file, uploadUrl, (progress) => {
+          // Scale progress: 10% (URL) + 80% (upload) = 90% total
+          setUploadProgress(10 + (progress * 0.8))
+        })
+        
+        setUploadProgress(90) // Ensure it's at 90% after upload completes
+      } else {
+        // For small files, use the regular upload endpoint
+        const formData = new FormData()
+        formData.append("file", file)
+
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        })
+
+        if (!uploadRes.ok) {
+          const errorData = await uploadRes.json().catch(() => ({ error: "Upload failed", message: "Upload failed" }))
+          throw new Error(errorData.message || errorData.error || "Upload failed")
+        }
+
+        const result = await uploadRes.json()
+        blobUrl = result.url
+        setUploadProgress(50)
+      }
 
       // Step 2: Create meeting record
       const meetingRes = await fetch("/api/meetings", {
@@ -107,7 +190,11 @@ export default function UploadPage() {
       }
 
       const meeting = await meetingRes.json()
-      setUploadProgress(90)
+      
+      // If we used direct upload, we're already at 90%, otherwise set it now
+      if (file.size <= vercelLimit) {
+        setUploadProgress(90)
+      }
 
       // Step 3: Start AI processing (async, don't wait)
       try {
