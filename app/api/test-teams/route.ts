@@ -48,7 +48,6 @@ export async function GET() {
           webhookSubscriptionId: true,
           webhookExpiresAt: true,
           scope: true,
-          createdAt: true,
         },
       })
     )
@@ -118,7 +117,6 @@ export async function GET() {
           ? Math.floor((account.expires_at * 1000 - Date.now()) / (1000 * 60 * 60 * 24))
           : null,
         scopes: account?.scope?.split(" ") || [],
-        createdAt: account?.createdAt,
       },
       webhook: {
         subscriptionId: account?.webhookSubscriptionId || updatedAccount?.webhookSubscriptionId,
