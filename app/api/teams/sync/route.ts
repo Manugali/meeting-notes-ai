@@ -32,12 +32,24 @@ export async function POST() {
     })
   } catch (error: any) {
     console.error("Error syncing Teams meetings:", error)
+    
+    // Provide user-friendly error messages
+    let errorMessage = error.message || "An error occurred while syncing Teams meetings."
+    let statusCode = 500
+    
+    // Check if it's a permission/authentication error
+    if (error.message?.includes("personal Microsoft accounts") || 
+        error.message?.includes("not available") ||
+        error.message?.includes("authenticating with resource")) {
+      statusCode = 403 // Forbidden - permission issue
+    }
+    
     return NextResponse.json(
       {
         error: "Failed to sync meetings",
-        message: error.message || "An error occurred while syncing Teams meetings.",
+        message: errorMessage,
       },
-      { status: 500 }
+      { status: statusCode }
     )
   }
 }

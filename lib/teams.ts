@@ -326,12 +326,21 @@ export async function fetchRecentCallRecords(
   } catch (error: any) {
     console.error("Error fetching call records:", error)
     
-    // If permission denied, provide helpful error
+    // Handle different error types
     if (error.statusCode === 403 || error.code === "Forbidden") {
       throw new Error(
         "Manual sync is not available with current permissions. " +
         "CallRecords.Read.All requires Application permissions (not Delegated). " +
         "Automatic processing via webhooks will work in production with HTTPS."
+      )
+    }
+    
+    // Handle authentication errors (common with personal Microsoft accounts)
+    if (error.statusCode === 400 || error.code === "AuthenticationError" || error.message?.includes("authenticating with resource")) {
+      throw new Error(
+        "Manual sync is not available for personal Microsoft accounts. " +
+        "The Call Records API requires work or school accounts with proper permissions. " +
+        "Automatic processing via webhooks will work in production when you record Teams meetings."
       )
     }
     
