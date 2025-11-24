@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { retryDbOperation } from "@/lib/db-utils"
-import { renewWebhookIfNeeded, getGraphClient } from "@/lib/teams"
+import { renewWebhookIfNeeded, getGraphClient, subscribeToTeamsRecordings } from "@/lib/teams"
 
 /**
  * Test endpoint to verify Teams connection and webhook status
@@ -71,8 +71,21 @@ export async function GET() {
       graphClientError = error.message
     }
 
-    // Check webhook renewal
-    const webhookRenewed = await renewWebhookIfNeeded(userId)
+    // Check webhook renewal (or create if missing)
+    let webhookRenewed = false
+    let webhookCreated = false
+    
+    if (account && tokenValid) {
+      // If webhook doesn't exist, create it
+      if (!account.webhookSubscriptionId || !account.webhookExpiresAt) {
+        console.log(`[Teams] Webhook missing for user ${userId}, creating...`)
+        const subscriptionId = await subscribeToTeamsRecordings(userId)
+        webhookCreated = subscriptionId !== null
+      } else {
+        // Otherwise, just renew if needed
+        webhookRenewed = await renewWebhookIfNeeded(userId)
+      }
+    }
     
     // Get updated account after renewal
     const updatedAccount = await retryDbOperation(() =>
@@ -121,9 +134,12 @@ export async function GET() {
       webhook: {
         subscriptionId: account?.webhookSubscriptionId || updatedAccount?.webhookSubscriptionId,
         expiresAt: account?.webhookExpiresAt || updatedAccount?.webhookExpiresAt,
-        expiresInDays: webhookExpiresIn,
+        expiresInDays: updatedAccount?.webhookExpiresAt
+          ? Math.floor((new Date(updatedAccount.webhookExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+          : webhookExpiresIn,
         isActive: webhookActive || (updatedAccount?.webhookExpiresAt && new Date(updatedAccount.webhookExpiresAt) > new Date()),
         wasRenewed: webhookRenewed,
+        wasCreated: webhookCreated,
       },
       graphApi: {
         clientAccessible: graphClientTest,
