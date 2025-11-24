@@ -38,7 +38,16 @@ export async function GET(req: Request) {
 
     const state = encodeURIComponent(userId) // Store user ID in state
 
-    const authUrl = `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}/oauth2/v2.0/authorize?` +
+    // Use 'common' for multi-tenant apps that support personal Microsoft accounts
+    // This allows both organizational and personal accounts to sign in
+    // If you only want organizational accounts, use process.env.AZURE_TENANT_ID
+    const tenantId = process.env.AZURE_TENANT_ID === 'common' || 
+                     process.env.AZURE_TENANT_ID === 'organizations' ||
+                     process.env.AZURE_TENANT_ID === 'consumers'
+                     ? process.env.AZURE_TENANT_ID
+                     : 'common' // Default to 'common' for multi-tenant with personal accounts
+
+    const authUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?` +
       `client_id=${process.env.AZURE_CLIENT_ID}&` +
       `response_type=code&` +
       `redirect_uri=${redirectUri}&` +
