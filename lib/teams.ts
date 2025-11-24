@@ -18,11 +18,18 @@ function getMsalClient() {
       throw new Error("Azure credentials not configured")
     }
 
+    // Use 'common' endpoint to support both organizational and personal Microsoft accounts
+    const tenantId = process.env.AZURE_TENANT_ID === 'common' || 
+                     process.env.AZURE_TENANT_ID === 'organizations' ||
+                     process.env.AZURE_TENANT_ID === 'consumers'
+                     ? process.env.AZURE_TENANT_ID
+                     : 'common' // Default to 'common' for multi-tenant with personal accounts
+
     msalClient = new ConfidentialClientApplication({
       auth: {
         clientId: process.env.AZURE_CLIENT_ID,
         clientSecret: process.env.AZURE_CLIENT_SECRET,
-        authority: `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}`,
+        authority: `https://login.microsoftonline.com/${tenantId}`,
       },
     })
   }

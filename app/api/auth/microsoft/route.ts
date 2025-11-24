@@ -37,11 +37,19 @@ export async function GET(req: Request) {
     }
 
     // Exchange code for tokens
+    // Use 'common' endpoint to support both organizational and personal Microsoft accounts
+    // The authorization code was issued by /common endpoint, so we must use /common here too
+    const tenantId = process.env.AZURE_TENANT_ID === 'common' || 
+                     process.env.AZURE_TENANT_ID === 'organizations' ||
+                     process.env.AZURE_TENANT_ID === 'consumers'
+                     ? process.env.AZURE_TENANT_ID
+                     : 'common' // Default to 'common' for multi-tenant with personal accounts
+    
     const msalClient = new ConfidentialClientApplication({
       auth: {
         clientId: process.env.AZURE_CLIENT_ID!,
         clientSecret: process.env.AZURE_CLIENT_SECRET!,
-        authority: `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}`,
+        authority: `https://login.microsoftonline.com/${tenantId}`,
       },
     })
 
