@@ -134,21 +134,83 @@ export async function subscribeToTeamsRecordings(userId: string): Promise<string
 
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/webhooks/teams`
     
-    // Subscribe to communications webhooks
+    // Subscribe to communications webhooks (3 days expiration)
+    const expirationDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
     const subscription = await client
       .api("/subscriptions")
       .post({
         changeType: "created,updated",
         notificationUrl: webhookUrl,
         resource: "/communications/callRecords",
-        expirationDateTime: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days
+        expirationDateTime: expirationDate.toISOString(),
         clientState: `teams-${userId}`,
       })
+
+    // Store subscription info in database
+    if (subscription.id) {
+      await retryDbOperation(() =>
+        prisma.account.updateMany({
+          where: {
+            userId,
+            provider: "microsoft",
+          },
+          data: {
+            webhookSubscriptionId: subscription.id,
+            webhookExpiresAt: expirationDate,
+          },
+        })
+      )
+    }
 
     return subscription.id
   } catch (error) {
     console.error("Error subscribing to Teams recordings:", error)
     return null
+  }
+}
+
+/**
+ * Check and renew webhook subscription if expired or expiring soon
+ * Returns true if webhook is active, false otherwise
+ */
+export async function renewWebhookIfNeeded(userId: string): Promise<boolean> {
+  try {
+    // Get account with webhook info
+    const account = await retryDbOperation(() =>
+      prisma.account.findFirst({
+        where: {
+          userId,
+          provider: "microsoft",
+        },
+        select: {
+          webhookSubscriptionId: true,
+          webhookExpiresAt: true,
+          access_token: true,
+        },
+      })
+    )
+
+    if (!account?.access_token) {
+      return false // Not connected
+    }
+
+    const now = new Date()
+    const oneDayFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000) // 1 day buffer
+
+    // Check if webhook is expired or expiring within 1 day
+    const needsRenewal = !account.webhookExpiresAt || 
+                         new Date(account.webhookExpiresAt) <= oneDayFromNow
+
+    if (needsRenewal) {
+      console.log(`[Teams] Webhook expiring soon or expired for user ${userId}, renewing...`)
+      const subscriptionId = await subscribeToTeamsRecordings(userId)
+      return subscriptionId !== null
+    }
+
+    return true // Webhook is still active
+  } catch (error) {
+    console.error("Error checking/renewing webhook:", error)
+    return false
   }
 }
 
