@@ -75,38 +75,43 @@ export async function GET(req: Request) {
     // The refresh token is managed internally by MSAL
     const refreshToken = (tokenResponse as any).refreshToken || null
 
-    // Store or update account
-    await retryDbOperation(() =>
-      prisma.account.upsert({
-        where: {
-          provider_providerAccountId: {
+    // Store or update account with retry logic for connection timeouts
+    // Use 3 retries with 500ms delay for OAuth callback (critical operation)
+    await retryDbOperation(
+      () =>
+        prisma.account.upsert({
+          where: {
+            provider_providerAccountId: {
+              provider: "microsoft",
+              providerAccountId: account.homeAccountId,
+            },
+          },
+          create: {
+            userId: userId,
+            type: "oauth",
             provider: "microsoft",
             providerAccountId: account.homeAccountId,
+            access_token: tokenResponse.accessToken,
+            refresh_token: refreshToken || undefined,
+            expires_at: tokenResponse.expiresOn
+              ? Math.floor(tokenResponse.expiresOn.getTime() / 1000)
+              : null,
+            token_type: "Bearer",
+            scope: tokenResponse.scopes?.join(" "),
           },
-        },
-        create: {
-          userId: userId,
-          type: "oauth",
-          provider: "microsoft",
-          providerAccountId: account.homeAccountId,
-          access_token: tokenResponse.accessToken,
-          refresh_token: refreshToken || undefined,
-          expires_at: tokenResponse.expiresOn
-            ? Math.floor(tokenResponse.expiresOn.getTime() / 1000)
-            : null,
-          token_type: "Bearer",
-          scope: tokenResponse.scopes?.join(" "),
-        },
-        update: {
-          access_token: tokenResponse.accessToken,
-          refresh_token: refreshToken || undefined,
-          expires_at: tokenResponse.expiresOn
-            ? Math.floor(tokenResponse.expiresOn.getTime() / 1000)
-            : null,
-          token_type: "Bearer",
-          scope: tokenResponse.scopes?.join(" "),
-        },
-      })
+          update: {
+            access_token: tokenResponse.accessToken,
+            refresh_token: refreshToken || undefined,
+            expires_at: tokenResponse.expiresOn
+              ? Math.floor(tokenResponse.expiresOn.getTime() / 1000)
+              : null,
+            token_type: "Bearer",
+            scope: tokenResponse.scopes?.join(" "),
+          },
+        }),
+      3, // 3 retries
+      500, // 500ms delay
+      false // Not fast mode - use exponential backoff
     )
 
     // Subscribe to webhooks (non-blocking - will handle separately if needed)

@@ -30,8 +30,17 @@ export async function retryDbOperation<T>(
         error.code === "ECONNREFUSED"
 
       if (isConnectionError && !isLastAttempt) {
-        // Very short retry delay - fail fast
-        const retryDelay = fastMode ? 50 : delay
+        // Calculate retry delay
+        let retryDelay: number
+        if (fastMode) {
+          // Fast mode: linear backoff (50ms, 100ms, 150ms...)
+          retryDelay = 50 * (i + 1)
+        } else {
+          // Normal mode: exponential backoff (delay, delay*2, delay*4...)
+          retryDelay = delay * Math.pow(2, i)
+        }
+        
+        console.warn(`Database connection error, retrying in ${retryDelay}ms... (${i + 1}/${maxRetries + 1})`)
         await new Promise((resolve) => setTimeout(resolve, retryDelay))
         continue
       }
