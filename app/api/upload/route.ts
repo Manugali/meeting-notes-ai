@@ -2,15 +2,19 @@ import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
 import { put } from "@vercel/blob"
 
+// Configure route to handle larger requests (though Vercel still has 4.5MB body limit)
+export const maxDuration = 60 // 60 seconds timeout
+
 export async function POST(req: Request) {
   const session = await auth()
   
   if (!session?.user) {
-    return new NextResponse("Unauthorized", { status: 401 })
+    return NextResponse.json({ error: "Unauthorized", message: "Please sign in to upload files." }, { status: 401 })
   }
 
-  const formData = await req.formData()
-  const file = formData.get("file") as File
+  try {
+    const formData = await req.formData()
+    const file = formData.get("file") as File
 
   if (!file) {
     return NextResponse.json(
@@ -63,6 +67,18 @@ export async function POST(req: Request) {
     })
   } catch (error: any) {
     console.error("Upload error:", error)
+    
+    // Check if it's a body size limit error
+    if (error.message?.includes("413") || error.message?.includes("Payload Too Large") || error.message?.includes("request entity too large")) {
+      return NextResponse.json(
+        { 
+          error: "File too large",
+          message: "File exceeds Vercel's 4.5MB upload limit. Please compress your file to under 4.5MB. You can use tools like HandBrake (for video) or online compressors."
+        },
+        { status: 413 }
+      )
+    }
+    
     return NextResponse.json(
       { 
         error: "Upload failed",

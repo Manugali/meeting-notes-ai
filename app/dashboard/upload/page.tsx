@@ -42,7 +42,20 @@ export default function UploadPage() {
     setUploadProgress(0)
 
     try {
-      // Step 1: Upload file
+      // Check file size limits
+      const vercelLimit = 4.5 * 1024 * 1024 // 4.5MB (Vercel serverless function body limit)
+      const openAILimit = 25 * 1024 * 1024 // 25MB (OpenAI Whisper limit)
+      
+      if (file.size > openAILimit) {
+        throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds the 25MB limit for AI processing. Please compress your file.`)
+      }
+
+      // Warn about Vercel limit but try anyway (might work with streaming)
+      if (file.size > vercelLimit) {
+        console.warn(`File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds Vercel's 4.5MB body limit. Attempting upload...`)
+      }
+
+      // Step 1: Upload file (Vercel Blob's put() handles streaming internally)
       const formData = new FormData()
       formData.append("file", file)
 
@@ -53,10 +66,19 @@ export default function UploadPage() {
 
       if (!uploadRes.ok) {
         const errorData = await uploadRes.json().catch(() => ({ error: "Upload failed", message: "Upload failed" }))
+        
+        // Check if it's a 413 error (Payload Too Large)
+        if (uploadRes.status === 413) {
+          throw new Error(
+            `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds Vercel's 4.5MB upload limit. ` +
+            `Please compress your file to under 4.5MB. You can use online tools like HandBrake or FFmpeg to compress video files.`
+          )
+        }
+        
         throw new Error(errorData.message || errorData.error || "Upload failed")
       }
 
-      const { url } = await uploadRes.json()
+      const { url: blobUrl } = await uploadRes.json()
       setUploadProgress(50)
 
       // Step 2: Create meeting record
@@ -66,7 +88,7 @@ export default function UploadPage() {
         body: JSON.stringify({
           title: title || "Untitled Meeting",
           description,
-          recordingUrl: url,
+          recordingUrl: blobUrl,
           metadata: {
             filename: file.name,
             size: file.size,
